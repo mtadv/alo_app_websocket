@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: alo-app-websocket
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
