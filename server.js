@@ -1,6 +1,5 @@
 // server.js
 const WebSocket = require("ws");
-const fetch = require("node-fetch");
 
 const port = process.env.PORT || 8080;
 const wss = new WebSocket.Server({ port });
