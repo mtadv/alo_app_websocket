@@ -13,6 +13,8 @@ app.post("/transcribe", async (req, res) => {
   if (!url) return res.status(400).json({ error: "No URL provided" });
 
   try {
+    console.log("🎧 Received transcription request for:", url);
+
     // 1. Create a transcript request
     const resp = await fetch("https://api.assemblyai.com/v2/transcript", {
       method: "POST",
@@ -24,9 +26,36 @@ app.post("/transcribe", async (req, res) => {
     });
 
     const data = await resp.json();
+    console.log("📩 AssemblyAI create response:", data);
+
     if (!data.id) {
       return res.status(400).json({ error: "Failed to create transcript", details: data });
     }
+
+    // 2. Poll until the transcript is ready
+    let status = data.status;
+    let transcript = null;
+
+    while (status !== "completed" && status !== "error") {
+      await new Promise((r) => setTimeout(r, 3000)); // wait 3s
+      const check = await fetch(
+        `https://api.assemblyai.com/v2/transcript/${data.id}`,
+        { headers: { authorization: process.env.ASSEMBLYAI_API_KEY } }
+      );
+      const checkData = await check.json();
+      console.log("⏳ Polling status:", checkData);
+
+      status = checkData.status;
+      if (status === "completed") transcript = checkData.text;
+      if (status === "error") return res.status(400).json(checkData);
+    }
+
+    res.json({ text: transcript });
+  } catch (err) {
+    console.error("❌ Transcribe error:", err);
+    res.status(500).json({ error: "Transcription failed" });
+  }
+});
 
     // 2. Poll until the transcript is ready
     let status = data.status;
