@@ -9,25 +9,25 @@ app.use(express.json());
 
 // 🔹 Simple HTTP endpoint for transcribing stored audio files
 app.post("/transcribe", async (req, res) => {
-  try {
-    const { url } = req.body;
-    if (!url) return res.status(400).json({ error: "Missing audio URL" });
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: "No URL provided" });
 
-    // Start transcription
+  try {
     const resp = await fetch("https://api.assemblyai.com/v2/transcript", {
       method: "POST",
       headers: {
         authorization: process.env.ASSEMBLYAI_API_KEY,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ audio_url: url }),
+      body: JSON.stringify({ audio_url: url }), // ✅ audio_url is required
     });
 
     const data = await resp.json();
-    if (data.error) {
-      console.error("❌ AssemblyAI error:", data.error);
-      return res.status(400).json(data);
-    }
+    res.json({ text: data.text || "Processing..." });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
     // Poll until transcription is ready
     let status = data.status;
