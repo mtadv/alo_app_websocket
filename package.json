@@ -12,7 +12,8 @@
   
   "dependencies": {
     "ws": "^8.18.2",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+     "node-fetch": "^2.6.7"
   },
 
   "engines": {
