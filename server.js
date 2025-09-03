@@ -1,92 +1,50 @@
 // server.js
 const WebSocket = require("ws");
+const express = require("express");
+
+const app = express();
+app.use(express.json());
 
 const port = process.env.PORT || 8080;
 const wss = new WebSocket.Server({ port });
 
-console.log(`✅ WebSocket server is running on port ${port}`);
-
-wss.on("connection", async (ws) => {
-  console.log("🔌 New client connected");
-
-  // Connect to AssemblyAI real-time API
-  const assemblyWs = await connectToAssemblyAI();
-
-  // Forward AssemblyAI transcripts back to client
-  if (assemblyWs) {
-    assemblyWs.on("message", (msg) => {
-      const data = JSON.parse(msg.toString());
-      if (data.text) {
-        console.log("📝 Transcript:", data.text);
-        ws.send(JSON.stringify({ transcript: data.text }));
-      }
-    });
-  }
-
-  // Handle incoming messages from client
-  ws.on("message", (message) => {
-    console.log(`💬 Received from client`);
-
-    // If it's audio data, forward to AssemblyAI
-    if (assemblyWs && assemblyWs.readyState === WebSocket.OPEN) {
-      assemblyWs.send(
-        JSON.stringify({
-          audio_data: message.toString("base64"), // assuming raw PCM
-        })
-      );
-    }
-
-    // Broadcast message to other clients
-    wss.clients.forEach((client) => {
-      if (client !== ws && client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
-  });
-
-  ws.on("close", () => {
-    console.log("❌ Client disconnected");
-    if (assemblyWs) assemblyWs.close();
-  });
-});
-
-// 🔹 Function to connect to AssemblyAI Realtime API
-async function connectToAssemblyAI() {
+// ✅ Add HTTP transcription endpoint for Flutter
+app.post("/transcribe", async (req, res) => {
   try {
-    // Get a temporary token from AssemblyAI
-    const resp = await fetch("https://api.assemblyai.com/v2/realtime/token", {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: "Missing audio url" });
+
+    // Request transcription from AssemblyAI
+    const response = await fetch("https://api.assemblyai.com/v2/transcript", {
       method: "POST",
       headers: {
         authorization: process.env.ASSEMBLYAI_API_KEY,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ expires_in: 3600 }), // 1 hour expiry
+      body: JSON.stringify({ audio_url: url }),
     });
 
-    const data = await resp.json();
-    if (!data || !data.token) {
-      console.error("❌ Failed to get AssemblyAI token:", data);
-      return null;
+    const data = await response.json();
+    if (!data.id) return res.status(500).json({ error: "Failed to start transcription", details: data });
+
+    // Poll until transcription is ready
+    let transcript;
+    while (true) {
+      const check = await fetch(`https://api.assemblyai.com/v2/transcript/${data.id}`, {
+        headers: { authorization: process.env.ASSEMBLYAI_API_KEY },
+      });
+      transcript = await check.json();
+      if (transcript.status === "completed") break;
+      if (transcript.status === "error") throw new Error(transcript.error);
+      await new Promise(r => setTimeout(r, 2000)); // wait 2s
     }
 
-    const assemblyUrl = `wss://api.assemblyai.com/v2/realtime/ws?sample_rate=16000&token=${data.token}`;
-    const assemblyWs = new WebSocket(assemblyUrl);
-
-    assemblyWs.on("open", () => {
-      console.log("🔗 Connected to AssemblyAI Realtime API");
-    });
-
-    assemblyWs.on("error", (err) => {
-      console.error("⚠️ AssemblyAI WebSocket error:", err);
-    });
-
-    assemblyWs.on("close", () => {
-      console.log("🔌 AssemblyAI connection closed");
-    });
-
-    return assemblyWs;
+    res.json({ text: transcript.text });
   } catch (err) {
-    console.error("❌ Error connecting to AssemblyAI:", err);
-    return null;
+    console.error("❌ Error in /transcribe:", err);
+    res.status(500).json({ error: err.message });
   }
-}
+});
+
+// Keep your WebSocket server as before...
+console.log(`✅ WebSocket server is running on port ${port}`);
