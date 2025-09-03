@@ -57,30 +57,6 @@ app.post("/transcribe", async (req, res) => {
   }
 });
 
-    // 2. Poll until the transcript is ready
-    let status = data.status;
-    let transcript = null;
-
-    while (status !== "completed" && status !== "error") {
-      await new Promise((r) => setTimeout(r, 3000)); // wait 3s
-      const check = await fetch(
-        `https://api.assemblyai.com/v2/transcript/${data.id}`,
-        { headers: { authorization: process.env.ASSEMBLYAI_API_KEY } }
-      );
-      const checkData = await check.json();
-      status = checkData.status;
-
-      if (status === "completed") transcript = checkData.text;
-      if (status === "error") return res.status(400).json(checkData);
-    }
-
-    res.json({ text: transcript });
-  } catch (err) {
-    console.error("❌ Transcribe error:", err);
-    res.status(500).json({ error: "Transcription failed" });
-  }
-});
-
 // 🔹 WebSocket server attached to Express
 const server = app.listen(port, () => {
   console.log(`✅ Server running on port ${port}`);
