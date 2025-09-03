@@ -7,7 +7,7 @@ const port = process.env.PORT || 8080;
 const app = express();
 app.use(express.json());
 
-// 🔹 HTTP endpoint for transcribing stored audio files
+// 🔹 1. Create transcript job
 app.post("/transcribe", async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "No URL provided" });
@@ -15,7 +15,6 @@ app.post("/transcribe", async (req, res) => {
   try {
     console.log("🎧 Received transcription request for:", url);
 
-    // 1. Create a transcript request
     const resp = await fetch("https://api.assemblyai.com/v2/transcript", {
       method: "POST",
       headers: {
@@ -32,28 +31,31 @@ app.post("/transcribe", async (req, res) => {
       return res.status(400).json({ error: "Failed to create transcript", details: data });
     }
 
-    // 2. Poll until the transcript is ready
-    let status = data.status;
-    let transcript = null;
-
-    while (status !== "completed" && status !== "error") {
-      await new Promise((r) => setTimeout(r, 3000)); // wait 3s
-      const check = await fetch(
-        `https://api.assemblyai.com/v2/transcript/${data.id}`,
-        { headers: { authorization: process.env.ASSEMBLYAI_API_KEY } }
-      );
-      const checkData = await check.json();
-      console.log("⏳ Polling status:", checkData);
-
-      status = checkData.status;
-      if (status === "completed") transcript = checkData.text;
-      if (status === "error") return res.status(400).json(checkData);
-    }
-
-    res.json({ text: transcript });
+    // ✅ Return transcript job ID immediately
+    res.json({ id: data.id, status: data.status });
   } catch (err) {
     console.error("❌ Transcribe error:", err);
     res.status(500).json({ error: "Transcription failed" });
+  }
+});
+
+// 🔹 2. Poll transcript status
+app.get("/transcribe/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: "No transcript ID provided" });
+
+  try {
+    const check = await fetch(`https://api.assemblyai.com/v2/transcript/${id}`, {
+      headers: { authorization: process.env.ASSEMBLYAI_API_KEY },
+    });
+
+    const data = await check.json();
+    console.log("⏳ Transcript status:", data);
+
+    res.json(data);
+  } catch (err) {
+    console.error("❌ Check transcript error:", err);
+    res.status(500).json({ error: "Failed to check transcript" });
   }
 });
 
